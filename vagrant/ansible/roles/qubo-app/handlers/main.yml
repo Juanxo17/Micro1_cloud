@@ -1,0 +1,5 @@
+---
+- name: reiniciar qubo
+  shell: |
+    pm2 reload all --update-env
+    pm2 save

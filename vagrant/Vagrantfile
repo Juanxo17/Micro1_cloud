@@ -1,0 +1,111 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+#
+# Microproyecto 1 — Cluster Consul + HAProxy + Artillery (UAO)
+# Fase: base de infraestructura (opción B: 3 VMs + rol Consul)
+#
+# 3 VMs (bento/ubuntu-22.04, 1024MB / 2 CPU):
+#   web1  192.168.56.10  Consul server
+#   web2  192.168.56.20  Consul server
+#   lb    192.168.56.30  Consul client (más adelante HAProxy + consul-template)
+#
+# Provisionador: ansible_local (corre Ansible DENTRO de cada VM,
+# evitando depender de Ansible instalado en el host Windows).
+# Reproducible con `vagrant up` desde cero.
+
+VAGRANTFILE_API_VERSION = "2"
+
+Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
+
+  # La box base es la misma para las 3 VM.
+  # Ubuntu 20.04: la misma versión que en FinalTelematicos (pool de boxes ya conocida/descargada).
+  config.vm.box = "bento/ubuntu-20.04"
+
+  # Ruta absoluta del backend de Qubo en el host (se monta en web1/web2)
+  # El host NO debe tener node_modules (se instala dentro de la VM).
+  qubo_backend_host = "C:/Users/perxa/Desktop/SEGUNDO SEMESTRE ESPECIALIZACIÓN IA - WORKSPACE/COMPUNUBE_ESPec/Micro1/estadoDelArte/Qubo/Backend"
+
+  # Definición declarativa de las VMs
+  nodes = [
+    {
+      name: "web1",
+      ip:   "192.168.56.10",
+      role: "consul-server",
+      qubo: true,
+      # Port-forwards hacia el host: Consul UI (8500) y API
+      forwards: { "8500" => "18500" }
+    },
+    {
+      name: "web2",
+      ip:   "192.168.56.20",
+      role: "consul-server",
+      qubo: true,
+      forwards: { "8500" => "28500" }
+    },
+    {
+      name: "lb",
+      ip:   "192.168.56.30",
+      role: "consul-client",
+      # 80 (proxy HAProxy) y 7000 (stats GUI) hacia el host.
+      forwards: { "80" => "80", "7000" => "7000" }
+    }
+  ]
+
+  nodes.each do |node|
+    config.vm.define node[:name] do |n|
+      n.vm.hostname = node[:name]
+      n.vm.network "private_network", ip: node[:ip]
+
+      # Port-forwards hacia el host (solo si hay)
+      node[:forwards].each do |guest, hostp|
+        n.vm.network "forwarded_port", guest: guest.to_i, host: hostp.to_i, auto_correct: true
+      end
+
+      # Sync folder del backend de Qubo (solo en las VMs web).
+      # Comparte el código del host; el rol qubo-app instala node_modules DENTRO de la VM.
+      if node[:qubo]
+        n.vm.synced_folder qubo_backend_host, "/opt/qubo/backend"
+      end
+
+      n.vm.provider "virtualbox" do |vb|
+        vb.name = "micro1-" + node[:name]
+        vb.memory = 1024
+        vb.cpus = 2
+        # Ajustes que mejoran estabilidad/velocidad en VirtualBox.
+        # natdnshostresolver1 + natdnsproxy1: enrutan el DNS de la VM a través del
+        # host, lo que evita fallos de resolución (como el de launchpad.net) igual
+        # que en la práctica FinalTelematicos.
+        vb.customize ["modifyvm", :id, "--natdnshostresolver1", "on"]
+        vb.customize ["modifyvm", :id, "--natdnsproxy1", "on"]
+        vb.customize ["modifyvm", :id, "--ioapic", "on"]
+      end
+
+      # Shell previo: arregla el DNS de la VM (el resolver del host Windows es un
+      # adaptador virtual que no resuelve) e instala Ansible vía apt.
+      # Instalar Ansible aquí (apt, funciona con Ubuntu 20.04) evita que el
+      # provisioner ansible_local intente instalar pip/ansible por su cuenta
+      # (que falla: el bootstrap de pip no soporta Python 3.8 y el PPA está deprecado).
+      # Si Ansible ya está instalado, ansible_local lo reutiliza sin reinstalar.
+      n.vm.provision "ensure-ansible", type: "shell", inline: <<-SHELL
+        export DEBIAN_FRONTEND=noninteractive
+        # Fijar DNS público (8.8.8.8) para que apt resuelva
+        chattr -i /etc/resolv.conf 2>/dev/null || true
+        printf "nameserver 8.8.8.8\nnameserver 8.8.4.4\n" > /etc/resolv.conf
+        cat /etc/resolv.conf
+        apt-get update -y -qq
+        apt-get install -y -qq python3-pip python3-setuptools ansible
+        ansible --version | head -1
+      SHELL
+
+      # Provisionador Ansible local (dentro de la VM).
+      # site.yml define qué roles aplican según el hostname.
+      # install_mode "pip" instala Ansible vía pip (el PPA 'ansible/ansible' está
+      # deprecado y ya no existe para Ubuntu 20.04; pip es la vía más robusta).
+      n.vm.provision "ansible_local" do |ansible|
+        ansible.playbook = "ansible/site.yml"
+        ansible.install_mode = "pip"
+        ansible.verbose = false
+      end
+    end
+  end
+end

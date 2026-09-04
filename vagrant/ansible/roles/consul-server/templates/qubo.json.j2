@@ -1,0 +1,15 @@
+{
+  "service": {
+    "name": "qubo",
+    "tags": ["web", "nodejs"],
+    "port": 8080,
+    "check": {
+      "id": "qubo-health",
+      "name": "Qubo health check",
+      "http": "http://{% if ansible_hostname == 'web1' %}192.168.56.10{% else %}192.168.56.20{% endif %}:8080/health",
+      "interval": "5s",
+      "timeout": "3s",
+      "status": "passing"
+    }
+  }
+}

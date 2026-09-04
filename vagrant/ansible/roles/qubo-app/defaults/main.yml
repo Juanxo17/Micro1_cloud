@@ -1,0 +1,10 @@
+---
+# Defaults del rol qubo-app
+# Número de réplicas del backend por VM (cada una en un puerto: 8080, 8081, ...)
+replicas: 3
+
+# Credenciales / configuración del backend (se pueden sobrescribir por playbook)
+database_url: "mongodb+srv://juanplata:C6hUFffc8vHdwCWd@cluster0.kpaarhg.mongodb.net/?retryWrites=true&w=majority"
+db_name: "qubo_cloud"
+jwt_secret: "micro1-qubo-jwt-secret-cambiar"
+jwt_expires_in: "7d"

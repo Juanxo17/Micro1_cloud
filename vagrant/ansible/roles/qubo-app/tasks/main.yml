@@ -1,0 +1,98 @@
+---
+# Role: qubo-app
+# Despliega el backend de Qubo sobre Node.js + PM2 con un número configurable
+# de réplicas por puerto. El código se copia del sync folder (host) a un
+# directorio de trabajo y las dependencias se instalan DENTRO de la VM.
+# Aplicar a: web1, web2
+- name: Instalar dependencias de apt (curl, ca-certificates, gnupg, rsync)
+  apt:
+    name:
+      - curl
+      - ca-certificates
+      - gnupg
+      - rsync
+    state: present
+    update_cache: true
+
+- name: Comprobar si Node.js ya está instalado
+  command: node --version
+  register: node_exists
+  changed_when: false
+  ignore_errors: true
+
+- name: Añadir repositorio NodeSource (Node 20 LTS)
+  block:
+    - name: Descargar script de instalación de NodeSource
+      get_url:
+        url: https://deb.nodesource.com/setup_20.x
+        dest: /tmp/nodesource_setup.sh
+        mode: 0755
+    - name: Ejecutar script NodeSource
+      command: bash /tmp/nodesource_setup.sh
+  when: node_exists.rc != 0
+
+- name: Instalar Node.js
+  apt:
+    name: nodejs
+    state: present
+
+- name: Verificar versión de Node y npm
+  command: node --version
+  register: node_version
+  changed_when: false
+
+- name: Instalar PM2 globalmente
+  npm:
+    name: pm2
+    global: true
+    state: present
+
+- name: Crear directorio de trabajo de Qubo
+  file:
+    path: /srv/qubo
+    state: directory
+    owner: root
+    group: root
+
+- name: Copiar código del backend desde el sync folder (sin node_modules ni .env)
+  command: >
+    rsync -a --delete --exclude=node_modules --exclude=.env
+    /opt/qubo/backend/ /srv/qubo/
+  args:
+    warn: false
+
+- name: Instalar dependencias del backend (npm install)
+  npm:
+    path: /srv/qubo
+    production: false
+
+- name: Generar .env por nodo
+  template:
+    src: env.j2
+    dest: /srv/qubo/src/.env
+    mode: 0600
+  notify: reiniciar qubo
+
+- name: Detener PM2 por si ya había un cluster previo (idempotencia)
+  command: pm2 kill
+  ignore_errors: true
+  changed_when: false
+
+- name: Levantar réplicas del backend con PM2
+  shell: |
+    set -e
+    {% for n in range(1, replicas + 1) %}
+    cd /srv/qubo/src && PORT={{ 8080 + n - 1 }} \
+    INSTANCE_ID={{ ansible_hostname }}-{{ 8080 + n - 1 }} \
+    NODE_ID={{ ansible_hostname }} \
+    pm2 start /srv/qubo/src/index.js \
+      --name "qubo-{{ ansible_hostname }}-{{ 8080 + n - 1 }}" \
+      --update-env
+    {% endfor %}
+    pm2 save
+  register: pm2_start
+
+- name: Listar procesos de PM2
+  command: pm2 list
+  register: pm2_list
+  changed_when: false

@@ -1,0 +1,58 @@
+# Balanceado con HAProxy - apunta al LB (192.168.56.30:80)
+# Objetivo: comparar contra el baseline (6 réplicas, roundrobin).
+config:
+  target: 'http://192.168.56.30'
+  phases:
+    - duration: 30
+      arrivalRate: 5
+      name: "Calentamiento"
+    - duration: 90
+      arrivalRate: 15
+      name: "Balanceado - 6 replicas via HAProxy"
+    - duration: 30
+      arrivalRate: 5
+      name: "Enfriamiento"
+  defaults:
+    headers:
+      User-Agent: "Artillery balanceado Micro1"
+
+scenarios:
+  - name: "Health check"
+    weight: 20
+    flow:
+      - get:
+          url: "/health"
+
+  - name: "Whoami"
+    weight: 10
+    flow:
+      - get:
+          url: "/whoami"
+
+  - name: "Login real"
+    weight: 50
+    flow:
+      - post:
+          url: "/api/login"
+          json:
+            email: "test@artillery.qubo"
+            password: "Test1234"
+          capture:
+            - json: "$.token"
+              as: "authToken"
+
+  - name: "Feed autenticado"
+    weight: 20
+    flow:
+      - post:
+          url: "/api/login"
+          json:
+            email: "test@artillery.qubo"
+            password: "Test1234"
+          capture:
+            - json: "$.token"
+              as: "authToken"
+      - get:
+          url: "/api/posts"
+          headers:
+            Authorization: "Bearer {{ authToken }}"

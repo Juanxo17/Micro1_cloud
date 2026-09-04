@@ -1,0 +1,78 @@
+---
+# Role: consul-server
+# Convierte la VM en un agente Consul en modo SERVER (miembro del clúster,
+# almacena el catálogo de servicios y participa en el quórum).
+# Aplicar a: web1, web2
+- name: Instalar dependencias base (unzip, curl)
+  apt:
+    name:
+      - unzip
+      - curl
+    state: present
+    update_cache: true
+
+- name: Comprobar si Consul ya está instalado
+  stat:
+    path: /usr/local/bin/consul
+  register: consul_bin
+
+- name: Instalar Consul 1.18.x si no está presente
+  unarchive:
+    src: "https://releases.hashicorp.com/consul/1.18.1/consul_1.18.1_linux_amd64.zip"
+    dest: /usr/local/bin
+    remote_src: true
+    mode: 0755
+  when: consul_bin.stat.exists == false
+
+- name: Verificar versión de Consul
+  command: consul version
+  register: consul_version
+  changed_when: false
+
+- name: Crear usuario de sistema consul
+  user:
+    name: consul
+    system: true
+    shell: /usr/sbin/nologin
+
+- name: Crear directorio de datos/certs/config de Consul
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: consul
+    group: consul
+  loop:
+    - /var/lib/consul
+    - /etc/consul.d
+
+- name: Desplegar configuración de agente server
+  template:
+    src: server.hcl.j2
+    dest: /etc/consul.d/server.hcl
+    owner: consul
+    group: consul
+    mode: 0644
+  notify: reiniciar consul
+
+- name: Desplegar unit systemd de Consul
+  template:
+    src: consul.service.j2
+    dest: /etc/systemd/system/consul.service
+    mode: 0644
+  notify: reiniciar consul
+
+- name: Registrar el servicio Qubo en Consul (con health check)
+  template:
+    src: qubo.json.j2
+    dest: /etc/consul.d/qubo.json
+    owner: consul
+    group: consul
+    mode: 0644
+  notify: reiniciar consul
+
+- name: Recargar systemd y habilitar el servicio de Consul
+  systemd:
+    daemon_reload: true
+    name: consul
+    enabled: true
+  notify: reiniciar consul

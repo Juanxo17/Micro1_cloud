@@ -1,0 +1,17 @@
+---
+# Microproyecto 1 — site.yml
+# Se ejecuta con ansible_local: corre DENTRO de cada VM contra localhost.
+# Como cada VM se ve a sí misma, seleccionamos el rol según el hostname real
+# del sistema operativo (ansible_hostname), que Vagrant define como web1/web2/lb.
+- hosts: all
+  become: true
+  gather_facts: true
+  roles:
+    - role: consul-server
+      when: ansible_hostname == "web1" or ansible_hostname == "web2"
+    - role: qubo-app
+      when: ansible_hostname == "web1" or ansible_hostname == "web2"
+    - role: consul-client
+      when: ansible_hostname == "lb"
+    - role: haproxy
+      when: ansible_hostname == "lb"

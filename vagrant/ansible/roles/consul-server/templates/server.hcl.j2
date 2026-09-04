@@ -1,0 +1,39 @@
+# Configuración del agente Consul en modo SERVER.
+# Generado por Ansible (template de rol consul-server).
+
+datacenter = "dc1"
+data_dir    = "/var/lib/consul"
+node_name   = "{{ inventory_hostname }}"
+
+# Este agente es un servidor del clúster (almacena el catálogo y participa en el quórum)
+server = true
+
+# Número esperado de servidores para formar clúster (2: web1 y web2).
+# Con bootstrap_expect, el agente inicia el quórum cuando alcanza los N servers.
+bootstrap_expect = 2
+
+# Dirección en la que Consul escucha la comunicación interna (gossip/Raft).
+# Usamos la IP de la red host-only (no la NAT 10.0.2.x) para que el clúster
+# se comunique por la red privada y matchee el retry_join.
+{% if ansible_hostname == "web1" %}
+bind_addr = "192.168.56.10"
+{% elif ansible_hostname == "web2" %}
+bind_addr = "192.168.56.20"
+{% endif %}
+
+# Direcciones en las que acepta conexiones de clientes/API/UI. 0.0.0.0 permite acceso desde el host.
+client_addr = "0.0.0.0"
+
+# Habilitar la interfaz web integrada de Consul
+ui = true
+
+# Log a syslog para que lo capture systemd/journald
+log_level = "INFO"
+
+# Retry join: intenta unirse a los demás servidores automáticamente.
+# web1 se une a web2 y viceversa (no usamos "retry_join" con los 3 para no romper el quórum de 2).
+{% if inventory_hostname == "web1" %}
+retry_join = ["192.168.56.20"]
+{% elif inventory_hostname == "web2" %}
+retry_join = ["192.168.56.10"]
+{% endif %}

@@ -1,0 +1,58 @@
+# Baseline SIN balanceador - apunta directo a web1:8080 (una réplica)
+# Objetivo: métricas de referencia sin HAProxy.
+config:
+  target: 'http://192.168.56.10:8080'
+  phases:
+    - duration: 30
+      arrivalRate: 5
+      name: "Calentamiento"
+    - duration: 90
+      arrivalRate: 15
+      name: "Baseline - una replica"
+    - duration: 30
+      arrivalRate: 5
+      name: "Enfriamiento"
+  defaults:
+    headers:
+      User-Agent: "Artillery baseline-sin-lb Micro1"
+
+scenarios:
+  - name: "Health check"
+    weight: 20
+    flow:
+      - get:
+          url: "/health"
+
+  - name: "Whoami"
+    weight: 10
+    flow:
+      - get:
+          url: "/whoami"
+
+  - name: "Login real"
+    weight: 50
+    flow:
+      - post:
+          url: "/api/login"
+          json:
+            email: "test@artillery.qubo"
+            password: "Test1234"
+          capture:
+            - json: "$.token"
+              as: "authToken"
+
+  - name: "Feed autenticado"
+    weight: 20
+    flow:
+      - post:
+          url: "/api/login"
+          json:
+            email: "test@artillery.qubo"
+            password: "Test1234"
+          capture:
+            - json: "$.token"
+              as: "authToken"
+      - get:
+          url: "/api/posts"
+          headers:
+            Authorization: "Bearer {{ authToken }}"

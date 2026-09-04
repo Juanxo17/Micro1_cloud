@@ -1,0 +1,4 @@
+---
+# Defaults del rol haproxy
+# Replicas por VM (debe coincidir con el rol qubo-app)
+replicas: 3

@@ -1,0 +1,35 @@
+---
+# Role: haproxy
+# Instala y configura HAProxy en el load balancer (lb). Fase 2: balanceo mínimo
+# entre las réplicas de Qubo (web1/web2) con health check HTTP a /health.
+# Aplicar a: lb
+- name: Instalar HAProxy
+  apt:
+    name: haproxy
+    state: present
+    update_cache: true
+
+- name: Habilitar HAProxy en el arranque
+  service:
+    name: haproxy
+    enabled: true
+
+- name: Desplegar configuración de HAProxy
+  template:
+    src: haproxy.cfg.j2
+    dest: /etc/haproxy/haproxy.cfg
+    mode: 0644
+  notify: reiniciar haproxy
+
+- name: Desplegar página de error 503 (ningún servidor disponible)
+  template:
+    src: qubo_down.http.j2
+    dest: /etc/haproxy/errors/qubo_down.http
+    mode: 0644
+  notify: reiniciar haproxy
+
+- name: Habilitar HAProxy y arrancarlo
+  service:
+    name: haproxy
+    state: started
+  notify: reiniciar haproxy

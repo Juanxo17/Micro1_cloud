@@ -1,0 +1,25 @@
+# Configuración del agente Consul en modo CLIENT.
+# Generado por Ansible (template de rol consul-client).
+# El lb consulta el catálogo de servicios (service discovery) sin ser servidor.
+
+datacenter = "dc1"
+data_dir    = "/var/lib/consul"
+node_name   = "{{ inventory_hostname }}"
+
+# Este agente NO es servidor (solo realiza consultas al catálogo)
+server = false
+
+# Dirección en la que Consul escucha la comunicación interna.
+# IP de la red host-only (no la NAT 10.0.2.x) para que se vea con los servers.
+bind_addr = "192.168.56.30"
+
+# Acepta conexiones de clientes/API/UI desde cualquier interfaz
+client_addr = "0.0.0.0"
+
+# GUI habilitada (accesible desde el host vía port-forward si se configura)
+ui = true
+
+log_level = "INFO"
+
+# Intentar unirse a los servidores del clúster (web1 y web2)
+retry_join = ["192.168.56.10", "192.168.56.20"]

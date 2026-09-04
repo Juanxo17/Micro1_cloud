@@ -1,0 +1,52 @@
+# HAProxy - Fase 2 (balanceo mínimo de réplicas de Qubo)
+global
+    log /dev/log local0
+    log /dev/log local1 notice
+    chroot /var/lib/haproxy
+    stats socket /run/haproxy/admin.sock mode 660 level admin expose-fd listeners
+    stats timeout 30s
+    user haproxy
+    group haproxy
+    daemon
+
+defaults
+    log     global
+    mode    http
+    option  httplog
+    option  dontlognull
+    timeout connect 5000
+    timeout client  50000
+    timeout server  50000
+    errorfile 400 /etc/haproxy/errors/400.http
+    errorfile 403 /etc/haproxy/errors/403.http
+    errorfile 408 /etc/haproxy/errors/408.http
+    errorfile 500 /etc/haproxy/errors/500.http
+    errorfile 502 /etc/haproxy/errors/502.http
+    errorfile 503 /etc/haproxy/errors/qubo_down.http
+    errorfile 504 /etc/haproxy/errors/504.http
+
+# Frontend stats: GUI accesible desde el host por el puerto 7000 (port-forward).
+frontend qstats
+    bind *:7000
+    stats enable
+    stats uri /
+    stats refresh 5s
+
+# Frontend: puerto 80, recibe el tráfico del cliente (frontend dev / navegador)
+frontend qfront
+    bind *:80
+    # Header que identifica qué server respondió (según el índice en el backend)
+    http-response set-header X-Qubo-Served-By server-%[srv_id]
+    default_backend qubo_servers
+
+# Backend: réplicas de Qubo en web1 y web2
+backend qubo_servers
+    balance roundrobin
+    option httpchk GET /health
+    http-check expect status 200
+{% for n in range(1, replicas + 1) %}
+    server web1-{{ 8080 + n - 1 }} 192.168.56.10:{{ 8080 + n - 1 }} check
+{% endfor %}
+{% for n in range(1, replicas + 1) %}
+    server web2-{{ 8080 + n - 1 }} 192.168.56.20:{{ 8080 + n - 1 }} check
+{% endfor %}
