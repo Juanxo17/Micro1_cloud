@@ -92,6 +92,12 @@
     pm2 save
   register: pm2_start
 
+- name: Habilitar arranque automático de PM2 al boot (supervivencia ante reboot)
+  command: pm2 startup systemd -u root --hp /root
+  register: pm2_startup
+  changed_when: false
+  notify: reiniciar qubo
+
 - name: Listar procesos de PM2
   command: pm2 list
   register: pm2_list
